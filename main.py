@@ -1,6 +1,7 @@
 import sys
 import yaml
 import argparse
+import struct
 
 
 class Assembler:
@@ -58,20 +59,51 @@ class Assembler:
         return intermediate
 
     @staticmethod
+    def assemble_to_binary(intermediate):
+        binary_data = bytearray()
+
+        for instr in intermediate:
+            opcode = instr['opcode']
+
+            if instr['type'] == 'load_const':
+                operand = instr['operand']
+                value = (operand << 5) | opcode
+                binary_data.extend(struct.pack('<Q', value)[:5])
+            elif instr['type'] == 'read_mem':
+                operand = instr['operand']
+                value = (operand << 5) | opcode
+                binary_data.extend(struct.pack('<I', value)[:3])
+            elif instr['type'] == 'write_mem':
+                binary_data.append(opcode)
+            elif instr['type'] == 'bitreverse':
+                operand = instr['operand']
+                value = (operand << 5) | opcode
+                binary_data.extend(struct.pack('<I', value)[:3])
+
+        return bytes(binary_data)
+
+    @staticmethod
     def format_instruction(instr):
         opcode = instr['opcode']
 
         if instr['type'] == 'load_const':
             operand = instr['operand']
-            return f"A: {opcode}, B: {operand} (0x{operand:X})"
+            value = (operand << 5) | opcode
+            bytes_hex = ', '.join(f'0x{b:02X}' for b in struct.pack('<Q', value)[:5])
+            return f"A: {opcode}, B: {operand} -> {bytes_hex}"
         elif instr['type'] == 'read_mem':
             operand = instr['operand']
-            return f"A: {opcode}, Адрес: {operand} (0x{operand:X})"
+            value = (operand << 5) | opcode
+            bytes_hex = ', '.join(f'0x{b:02X}' for b in struct.pack('<I', value)[:3])
+            return f"A: {opcode}, Адрес: {operand} -> {bytes_hex}"
         elif instr['type'] == 'write_mem':
-            return f"A: {opcode}"
+            bytes_hex = f'0x{opcode:02X}'
+            return f"A: {opcode} -> {bytes_hex}"
         elif instr['type'] == 'bitreverse':
             operand = instr['operand']
-            return f"A: {opcode}, Адрес: {operand} (0x{operand:X})"
+            value = (operand << 5) | opcode
+            bytes_hex = ', '.join(f'0x{b:02X}' for b in struct.pack('<I', value)[:3])
+            return f"A: {opcode}, Адрес: {operand} -> {bytes_hex}"
         return str(instr)
 
 
@@ -91,16 +123,20 @@ def main():
         assembler = Assembler()
         intermediate = assembler.parse_yaml(yaml_content)
 
+        num_commands = len(intermediate)
+        binary_code = assembler.assemble_to_binary(intermediate)
+
         if args.test:
             print("Промежуточное представление:")
             print("=" * 50)
             for i, instr in enumerate(intermediate):
                 print(f"Инструкция {i}: {assembler.format_instruction(instr)}")
             print("=" * 50)
+            print(f"Число ассемблированных команд: {num_commands}")
         else:
-            with open(args.output_file, 'w', encoding='utf-8') as f:
-                for instr in intermediate:
-                    f.write(f"{assembler.format_instruction(instr)}\n")
+            with open(args.output_file, 'wb') as f:
+                f.write(binary_code)
+            print(f"Число ассемблированных команд: {num_commands}")
 
     except FileNotFoundError:
         print(f"Ошибка: файл {args.input_file} не найден")
@@ -118,4 +154,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
